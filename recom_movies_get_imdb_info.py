@@ -9,7 +9,7 @@ Author: Mei Yong
 import pandas as pd
 import numpy as np
 import requests
-from bs4 import BeautifulSoup # parse html code
+from bs4 import BeautifulSoup
 import re 
 
 # Import movies
@@ -147,18 +147,14 @@ imdb_df['summary_text_new'] = imdb_df['summary_text'].apply(lambda x: pre_proces
 
 
 
-
-
-#CREATE VECTORS SHOWING NUMBER OF OCCURRENCES OF WORDS IN EACH SUMMARY TEXT ITEM
-
+# Create word count vectors - i.e. number of occurences of words in each summay text item
 from sklearn.feature_extraction.text import CountVectorizer
 summaries = imdb_df['summary_text_new'].tolist()
 cv = CountVectorizer(stop_words='english')
 word_count_vector = cv.fit_transform(summaries)
 
-
-#TRANSFORM WORD COUNT VECTORS INTO TIF-IDF VECTORS, I.E. SHOWING TF-IDF OF WORDS IN EACH SUMMARY TEXT  ITEM
-
+# Convert the word count vectors into TF-IDF vectors
+# http://www.tfidf.com/
 from sklearn.feature_extraction.text import TfidfTransformer
 
 tfidf_transformer = TfidfTransformer(smooth_idf=True, use_idf=True)
@@ -166,77 +162,56 @@ tfidf_transformer.fit(word_count_vector)
 
 
 
-
-
-
-
-#DEFINE SET OF FUNCTIONS TO EXTRACT OUT TOP 3 WORDS WITH THE HIGHEST TF-IDF SCORES (FOR EACH SUMMARY TEXT)
-
+# Helper functions to get the top 3 descriptive words from summary text
+	
+# Sort the tf-idf vectors by descending order of scores
 def sort_coo(coo_matrix):
     tuples = zip(coo_matrix.col, coo_matrix.data)
     return sorted(tuples, key=lambda x: (x[1], x[0]), reverse=True)
- 
+
+# Extract only the top n words and their tf-idf scores - default is top 10
 def extract_topn_from_vector(feature_names, sorted_items, topn=10):
-    """get the feature names and tf-idf score of top n items"""
     
-    #use only topn items from vector
+    # Get the topn items from the vector
     sorted_items = sorted_items[:topn]
  
-    score_vals = []
-    feature_vals = []
-    
-    # word index and corresponding tf-idf score
-    for idx, score in sorted_items:
-        
-        #keep track of feature name and its corresponding score
-        score_vals.append(round(score, 3))
-        feature_vals.append(feature_names[idx])
+	# Convert into a dictionary and round the scores
+	results = {}
+	for idx, score in sorted_items:
+		results[feature_names[idx]] = round(score,3)
+	
+	return results
  
-    #create a tuples of feature,score
-    #results = zip(feature_vals,score_vals)
-    results= {}
-    for idx in range(len(feature_vals)):
-        results[feature_vals[idx]]=score_vals[idx]
-    
-    return results
-
+# Get list of top 3 key words from the summary text
 def get_top_words(doc,num_words=3):
-    # get feature names (i.e. words)
+
+    # Get feature names (i.e. words)
     feature_names=cv.get_feature_names()
  
-    #generate tf-idf for the given document
+    # Generate tf-idf for the given document
     tf_idf_vector=tfidf_transformer.transform(cv.transform([doc]))
  
-    #sort the tf-idf vectors by descending order of scores
+    # Sort the tf-idf vectors by descending order of scores
     sorted_items=sort_coo(tf_idf_vector.tocoo())
  
-    #extract only the top n; n here is 10
+    # Extract only the top n words and their tf-idf scores
     keywords=extract_topn_from_vector(feature_names,sorted_items,num_words)
 
     return list(keywords.keys())
 
 
-
-#apply function to extract out top 3 words (descriptors) from summary text
+# Get top 3 words and put into a new column
 imdb_df['top_descriptors'] = imdb_df['summary_text_new'].apply(lambda x: get_top_words(x,num_words=3))
 
-# same prep as before
+# Same data prep as before
 imdb_df['top_descriptors'] = imdb_df['top_descriptors'].apply(add_nans)
 imdb_df = explode_cols(df=imdb_df, input_col='top_descriptors', output_cols=['descriptor_1','descriptor_2','descriptor_3'])
 
 
 
-
+# Join the datasets together and export to CSV
 movies_imdb = pd.concat([movies,imdb_df],join='inner',axis=1)
-
 movies_imdb.to_csv("movies_imdb.csv", index=False)
-
-
-
-
-
-
-
 
 
 
